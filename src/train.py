@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import time
 
 class Trainer:
     def __init__(self, model, train_loader, learning_rate, epochs):
@@ -34,6 +35,5 @@ class Trainer:
             epoch_loss += loss.item()
 
         return epoch_loss / batches
-
     
         
