@@ -4,11 +4,12 @@ from src.data_downloader import DataDownloader
 from src.model import MNISTClassifier
 from src.train import Trainer
 from torch.utils.data import DataLoader
+from src.evaluate import Evaluator
 
 if __name__ == "__main__":
     downloader = DataDownloader()
     train_dataset, test_dataset = downloader.download_mnist()
-    
+
     model = MNISTClassifier(128, 2)
     model_path = "mnist_model.pth"
 
@@ -37,4 +38,16 @@ if __name__ == "__main__":
         print("Training over. Saving model...")
         torch.save(model.state_dict(), model_path)
         print("Model saved!")
+
+
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=64,
+        shuffle=False
+    )
+
+    evaluator = Evaluator(model, test_loader)
+
+    accuracy = evaluator.evaluate()
+    print(f"Test accuracy : {accuracy:.4f}")
 

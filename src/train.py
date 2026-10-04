@@ -13,6 +13,8 @@ class Trainer:
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
     def train(self):
+        self.model.train()
+        
         for epoch in range(self.epochs):
             loss = self.train_epoch()
             print(f"Epoch {epoch + 1}/{self.epochs} - Loss : {loss:.4f}")
