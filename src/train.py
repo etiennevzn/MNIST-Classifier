@@ -13,15 +13,27 @@ class Trainer:
 
     def train(self):
         for epoch in range(self.epochs):
-            self.train_epoch()
+            loss = self.train_epoch()
+            print(f"Epoch {epoch + 1}/{self.epochs} - Loss : {loss:.4f}")
 
     def train_epoch(self):
+        epoch_loss = 0
+        batches = 0
+
         for images, labels in self.train_loader:
+            batches += 1
+
             self.optimizer.zero_grad()
+
             y_train = self.model(images)
             loss = self.criterion(y_train, labels)
+
             loss.backward()
             self.optimizer.step()
+
+            epoch_loss += loss.item()
+
+        return epoch_loss / batches
 
     
         
