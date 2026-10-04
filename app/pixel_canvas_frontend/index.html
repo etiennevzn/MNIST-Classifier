@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+  }
+
+  .wrapper {
+    display: flex;
+    justify-content: center;
+    box-sizing: border-box;
+    padding: 6px;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #1b1e26;
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px rgba(128, 128, 128, 0.8);
+    cursor: crosshair;
+    touch-action: none;
+  }
+</style>
+</head>
+<body>
+<div class="wrapper" id="wrapper">
+  <canvas id="canvas"></canvas>
+</div>
+
+<script>
+  const wrapper = document.getElementById("wrapper");
+  const canvas = document.getElementById("canvas");
+  const context = canvas.getContext("2d");
+
+  const SIGMA = 0.8;
+  const RADIUS = 2;
+  const EMPTY_COLOR = "#1b1e26";
+  const GRID_COLOR = "rgba(255, 255, 255, 0.22)";
+
+  let size = 0;
+  let cellSize = 0;
+  let grid = null;
+  let drawing = false;
+  let lastCell = null;
+
+  function sendToStreamlit(type, payload) {
+    window.parent.postMessage(
+      Object.assign({ isStreamlitMessage: true, type: type }, payload),
+      "*"
+    );
+  }
+
+  function reportHeight() {
+    const height = Math.ceil(wrapper.getBoundingClientRect().height) + 2;
+    sendToStreamlit("streamlit:setFrameHeight", { height: height });
+  }
+
+  function setup(newSize, newCellSize) {
+    if (newSize === size && newCellSize === cellSize) {
+      return;
+    }
+
+    size = newSize;
+    cellSize = newCellSize;
+    grid = new Float32Array(size * size);
+    canvas.width = size * cellSize;
+    canvas.height = size * cellSize;
+    canvas.style.maxWidth = canvas.width + "px";
+
+    render();
+    reportHeight();
+  }
+
+  function render() {
+    context.fillStyle = EMPTY_COLOR;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    for (let row = 0; row < size; row++) {
+      for (let col = 0; col < size; col++) {
+        const value = grid[row * size + col];
+        if (value > 0) {
+          const level = Math.round(value * 255);
+          context.fillStyle = "rgb(" + level + "," + level + "," + level + ")";
+          context.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+        }
+      }
+    }
+
+    context.strokeStyle = GRID_COLOR;
+    context.lineWidth = 1;
+    context.beginPath();
+    for (let i = 0; i <= size; i++) {
+      const position = Math.min(i * cellSize, canvas.width - 1) + 0.5;
+      context.moveTo(position, 0);
+      context.lineTo(position, canvas.height);
+      context.moveTo(0, position);
+      context.lineTo(canvas.width, position);
+    }
+    context.stroke();
+  }
+
+  function paint(col, row) {
+    for (let dy = -RADIUS; dy <= RADIUS; dy++) {
+      for (let dx = -RADIUS; dx <= RADIUS; dx++) {
+        const x = col + dx;
+        const y = row + dy;
+        if (x < 0 || x >= size || y < 0 || y >= size) {
+          continue;
+        }
+
+        const intensity = Math.exp(-(dx * dx + dy * dy) / (2 * SIGMA * SIGMA));
+        const index = y * size + x;
+        grid[index] = Math.max(grid[index], intensity);
+      }
+    }
+  }
+
+  function paintLine(from, to) {
+    const steps = Math.max(Math.abs(to.col - from.col), Math.abs(to.row - from.row), 1);
+    for (let step = 0; step <= steps; step++) {
+      const t = step / steps;
+      paint(
+        Math.round(from.col + (to.col - from.col) * t),
+        Math.round(from.row + (to.row - from.row) * t)
+      );
+    }
+  }
+
+  function cellFromEvent(event) {
+    const rect = canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (event.clientY - rect.top) * (canvas.height / rect.height);
+    return {
+      col: Math.min(size - 1, Math.max(0, Math.floor(x / cellSize))),
+      row: Math.min(size - 1, Math.max(0, Math.floor(y / cellSize)))
+    };
+  }
+
+  function commit() {
+    const pixels = Array.from(grid, function (value) {
+      return Math.round(value * 255);
+    });
+    sendToStreamlit("streamlit:setComponentValue", { value: pixels, dataType: "json" });
+  }
+
+  canvas.addEventListener("pointerdown", function (event) {
+    canvas.setPointerCapture(event.pointerId);
+    drawing = true;
+    lastCell = cellFromEvent(event);
+    paint(lastCell.col, lastCell.row);
+    render();
+  });
+
+  canvas.addEventListener("pointermove", function (event) {
+    if (!drawing) {
+      return;
+    }
+    const cell = cellFromEvent(event);
+    paintLine(lastCell, cell);
+    lastCell = cell;
+    render();
+  });
+
+  function stopDrawing() {
+    if (!drawing) {
+      return;
+    }
+    drawing = false;
+    lastCell = null;
+    commit();
+  }
+
+  canvas.addEventListener("pointerup", stopDrawing);
+  canvas.addEventListener("pointercancel", stopDrawing);
+
+  new ResizeObserver(reportHeight).observe(wrapper);
+
+  window.addEventListener("message", function (event) {
+    if (event.data && event.data.type === "streamlit:render") {
+      const args = event.data.args;
+      setup(args.size, args.cell_size);
+    }
+  });
+
+  sendToStreamlit("streamlit:componentReady", { apiVersion: 1 });
+</script>
+</body>
+</html>
